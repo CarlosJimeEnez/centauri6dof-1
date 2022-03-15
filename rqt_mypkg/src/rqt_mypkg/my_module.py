@@ -23,6 +23,20 @@ from centauri6dof_moveit.msg import ArmJointState
 from progressbar import ProgressBar
 from moveit_commander.conversions import pose_to_list
 from random import randint
+import socket
+
+ws = socket.socket()
+ws.bind(("localhost", 8000))
+print("Connected to WebSocket server")
+
+ws.listen(5)
+conexion, addr = ws.accept()
+print("Nueva conexion")
+print(addr)
+conexion.send(b'server say hi')
+conexion.close()
+
+
 
 class MyPlugin(Plugin):
 
@@ -42,8 +56,8 @@ class MyPlugin(Plugin):
                       help="Put plugin in silent mode")
         args, unknowns = parser.parse_known_args(context.argv())
         if not args.quiet:
-            print 'arguments: ', args
-            print 'unknowns: ', unknowns
+            print ('arguments: ', args)
+            print ('unknowns: ', unknowns)
 
         # Create QWidget
         self._widget = QWidget()
@@ -53,27 +67,30 @@ class MyPlugin(Plugin):
         group_name = "centauri6dof_arm"
         group = MICMoveGroupCommander.MoveGroupCommander(group_name)
 
-        display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path',
-                                                   moveit_msgs.msg.DisplayTrajectory,
-                                                   queue_size=20)
+        display_trajectory_publisher = rospy.Publisher(
+            '/move_group/display_planned_path',
+            moveit_msgs.msg.DisplayTrajectory,
+            queue_size=20
+        )
 
         # We can get the name of the reference frame for this robot:
         planning_frame = group.get_planning_frame()
-        print "============ Reference frame: %s" % planning_frame
+        print ("============ Reference frame: %s" % planning_frame)
 
         # We can also print the name of the end-effector link for this group:
         eef_link = group.get_end_effector_link()
-        print "============ End effector: %s" % eef_link
+        print ("============ End effector: %s" % eef_link)
 
         # We can get a list of all the groups in the robot:
         group_names = robot.get_group_names()
-        print "============ Robot Groups:", robot.get_group_names()
+        print ("============ Robot Groups:", robot.get_group_names())
 
         # Sometimes for debugging it is useful to print the entire state of the
         # robot:
-        print "============ Printing robot state"
-        print robot.get_current_state()
-        print ""
+        print ("============ Printing robot state")
+        print (robot.get_current_state())
+        print ("")
+
         self.robot = robot
         self.scene = scene
         self.group = group
@@ -82,6 +99,7 @@ class MyPlugin(Plugin):
         self.eef_link = eef_link
         self.group_names = group_names
 
+        ############# INICIO DEL GUI ##########
 
         # Get path to UI file which should be in the "resource" folder of this package
         ui_file = os.path.join(rospkg.RosPack().get_path('rqt_mypkg'), 'resource', 'MyPlugin.ui')
@@ -149,12 +167,14 @@ class MyPlugin(Plugin):
         self._widget.PreviewButton.setIcon(QIcon.fromTheme('software-update-available'))
         self._widget.PreviewButton.clicked[bool].connect(self._Preview_pose_sliders)
 
+        #### Creo que guarda las posiciones donde se va a mover en un objeto 
+        # de la clase ArmJoinState:         
         self.goal = ArmJointState()
 
         self.arr_sl = [self._widget.SlJoint1,self._widget.SlJoint2,self._widget.SlJoint3,self._widget.SlJoint4,self._widget.SlJoint5,self._widget.SlJoint6]
         self.arr_ShowSl = [self._widget.ShowJoint1,self._widget.ShowJoint2,self._widget.ShowJoint3,self._widget.ShowJoint4,self._widget.ShowJoint5,self._widget.ShowJoint6]
         
-
+        #Publica a el topic joinsteps mensajes de tipo ArmJointState:
         self.pub2 = rospy.Publisher('joint_steps', ArmJointState, queue_size=50)
         rate = rospy.Rate(20) # 20hz
 
@@ -164,7 +184,8 @@ class MyPlugin(Plugin):
         self.joint_visualizer = []
 
         lista_arq = ''
-    
+
+        #Guarda de alguna forma las trayectorias dadas en un carpeta: 
         if os.path.exists(self.username+"/trajectories_centauri6dof"):
             for i in os.listdir(self.username+"/trajectories_centauri6dof"): lista_arq+=(i+'\n')
             print(lista_arq)
@@ -216,6 +237,11 @@ class MyPlugin(Plugin):
         self.count_save_pose = 0
         self.activate = 0
 
+
+
+    # Methods #####
+    # Publica a el topic JOIN_STEPS los valores predefinidos en object_trajectories:
+    # En la interfaz representa el boton Path 1. 
     def fcn_path_1(self):
         self._widget.ShowText.setText("Path one")
         group = self.group
@@ -223,8 +249,13 @@ class MyPlugin(Plugin):
         pub = rospy.Publisher('joint_steps', ArmJointState, queue_size=20)
         rate = rospy.Rate(20) # 20hz
         pbar = ProgressBar()
+        #Toma los valores de cada joint en ese momento: 
         joint_goal = group.get_current_joint_values()
 
+    #Joint goal publica los valores a el simulador mediante la funcion:
+    #group.publish(joint.goal)
+    #Goal.position es un objeto que guarda los valores de cada joint y los
+    #publica a el topic: joint_steps.
         for i in pbar(self.object_trajectories["box"]):
             goal = ArmJointState()
             goal.position1 = i[0]
@@ -250,13 +281,10 @@ class MyPlugin(Plugin):
         for i in xrange(0,6):
             joint_goal[i] = (self.arr_sl[i].value()*np.pi)/180
 
-        
 
-        
-        
+    #Representa el boton de de Path2, este no envia valores a el simulador:  
     def fcn_path_2(self):
         self._widget.ShowText.setText("Path two")
-
         pub = rospy.Publisher('joint_steps', ArmJointState, queue_size=20)
         rate = rospy.Rate(20) # 20hz
         pbar = ProgressBar()
@@ -272,6 +300,8 @@ class MyPlugin(Plugin):
             pub.publish(goal)
             rospy.sleep(4)
 
+    # Recive informacion del topic: /move_group/fake_controller_joint_states 
+    # pero no estoy seguro de que hace realmente esa informacion:  
     def joint_states_callback(self, joint_state):
         pub = rospy.Publisher('trajectory', ArmJointState, queue_size=20)
         rate = rospy.Rate(20) # 20hz
@@ -297,6 +327,8 @@ class MyPlugin(Plugin):
         #group.go(joint_goal, wait=True)
         #group.stop()
 
+    # Permite el movimiento del robot con los sliders presionando
+    # el boton play
     def _Send_joints_teleoperation(self):
         self._widget.ShowText.setText("Moving Joints with Sliders")
 
@@ -319,7 +351,8 @@ class MyPlugin(Plugin):
         group.stop()
 
         current_joints = self.group.get_current_joint_values()
-        
+    
+    #Regresa a 0 los valores de los sliders: 
     def _Center_joints_teleoperation(self):
         group = self.group 
         joint_goal = group.get_current_joint_values()
