@@ -23,18 +23,19 @@ from centauri6dof_moveit.msg import ArmJointState
 from progressbar import ProgressBar
 from moveit_commander.conversions import pose_to_list
 from random import randint
-import socket
 
-ws = socket.socket()
-ws.bind(("localhost", 8000))
-print("Connected to WebSocket server")
+# import socket
 
-ws.listen(5)
-conexion, addr = ws.accept()
-print("Nueva conexion")
-print(addr)
-conexion.send(b'server say hi')
-conexion.close()
+# ws = socket.socket()
+# ws.bind(("localhost", 8000))
+# print("Connected to WebSocket server")
+
+# ws.listen(5)
+# conexion, addr = ws.accept()
+# print("Nueva conexion")
+# print(addr)
+# conexion.send(b'server say hi')
+# conexion.close()
 
 
 
@@ -114,6 +115,10 @@ class MyPlugin(Plugin):
         # tell from pane to pane.
 
         rospy.Subscriber("/move_group/fake_controller_joint_states", JointState, self.joint_states_callback)
+
+
+        rospy.Subscriber('chatter', String, self.fun_prueba)
+        
 
         self.username = os.path.expanduser("~")
 
@@ -238,6 +243,7 @@ class MyPlugin(Plugin):
         self.activate = 0
 
 
+    
 
     # Methods #####
     # Publica a el topic JOIN_STEPS los valores predefinidos en object_trajectories:
@@ -553,3 +559,8 @@ class MyPlugin(Plugin):
         # TODO restore intrinsic configuration, usually using:
         # v = instance_settings.value(k)
         pass
+
+    ###Intento de hacer un nodo subscriptor que se comunica
+    # con el cliente ### 
+    def fun_prueba(self,payload): 
+        print("ola")
