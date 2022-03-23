@@ -1,4 +1,8 @@
+import imp
+import json
 import os
+from posixpath import split
+import string
 import rospy
 import rospkg
 import math
@@ -10,7 +14,6 @@ import moveit_commander
 import moveit_commander.move_group as MICMoveGroupCommander
 import moveit_msgs.msg
 import geometry_msgs.msg
-
 import time
 
 from sensor_msgs.msg import JointState
@@ -24,20 +27,9 @@ from progressbar import ProgressBar
 from moveit_commander.conversions import pose_to_list
 from random import randint
 
-# import socket
-
-# ws = socket.socket()
-# ws.bind(("localhost", 8000))
-# print("Connected to WebSocket server")
-
-# ws.listen(5)
-# conexion, addr = ws.accept()
-# print("Nueva conexion")
-# print(addr)
-# conexion.send(b'server say hi')
-# conexion.close()
-
-
+import json
+import yaml
+import re 
 
 class MyPlugin(Plugin):
 
@@ -117,9 +109,6 @@ class MyPlugin(Plugin):
         rospy.Subscriber("/move_group/fake_controller_joint_states", JointState, self.joint_states_callback)
 
 
-        rospy.Subscriber('chatter', String, self.fun_prueba)
-        
-
         self.username = os.path.expanduser("~")
 
 
@@ -142,8 +131,7 @@ class MyPlugin(Plugin):
         self._widget.Path2Button.setIcon(QIcon.fromTheme('media-playback-start'))
         self._widget.Path2Button.clicked[bool].connect(self.fcn_path_2)
 
-        self._widget.PlayButton.setIcon(QIcon.fromTheme('media-record'))
-        self._widget.PlayButton.clicked[bool].connect(self._Send_joints_teleoperation)
+       
 
         self._widget.HomeButton.setIcon(QIcon.fromTheme('go-home'))
         self._widget.HomeButton.clicked[bool].connect(self._Center_joints_teleoperation)
@@ -242,10 +230,11 @@ class MyPlugin(Plugin):
         self.count_save_pose = 0
         self.activate = 0
 
+        ### Nodos subscriptos: 
+        rospy.Subscriber('sliders_value', String, self._Send_joints_teleoperation)
 
-    
 
-    # Methods #####
+    ####### Methods #####S
     # Publica a el topic JOIN_STEPS los valores predefinidos en object_trajectories:
     # En la interfaz representa el boton Path 1. 
     def fcn_path_1(self):
@@ -283,7 +272,6 @@ class MyPlugin(Plugin):
         group.stop()
         current_joints = self.group.get_current_joint_values()
         
-
         for i in xrange(0,6):
             joint_goal[i] = (self.arr_sl[i].value()*np.pi)/180
 
@@ -333,18 +321,48 @@ class MyPlugin(Plugin):
         #group.go(joint_goal, wait=True)
         #group.stop()
 
+
     # Permite el movimiento del robot con los sliders presionando
     # el boton play
-    def _Send_joints_teleoperation(self):
-        self._widget.ShowText.setText("Moving Joints with Sliders")
-
+    def _Send_joints_teleoperation(self, payload):    
         group = self.group
         joint_goal = group.get_current_joint_values()
+        print("Llegada desde la pagina: {}".format(payload))        
+        #Salida: "[\"64\",\"50\",{\"setpoint\":0},{\"setpoint\":0},{\"setpoint\":0},{\"setpoint\":0}]"
 
+        ### Funcion donde se convierte de JSON a string los valores de entrada:
+        setpoints_motor = [0,0,0,0,0,0]
+        setpoints = [0,0,0,0,0,0]
+        paylaod_string = str(payload)
+        #Encuentra los valores int() del str de entrada: 
+        setpoints_motor = re.findall('[0-9,-]+',paylaod_string) 
+
+        for index, setpoint in enumerate(setpoints_motor): 
+            paylaod_string = str(setpoint)
+            setpoints_motor[index] = re.findall('[0-9,-]+', paylaod_string)
+            #Salida:  [['64'], [','], ['10'], [','], ['60'], [','], ['-58'], [','], ['67'], [','], ['58']]
+        print("setpoint motors: {}".format(setpoints_motor)) #Valores de los sliders         
+        print("setpoint motors: {}".format(setpoints_motor[1])) #Valores de los sliders 
+
+        #Conversion a int del paylaod: 
+        index2 = 0
+        for index, payload in enumerate(setpoints_motor):     
+            if index%2 == 0:
+                setpoints[index2] = int(setpoints_motor[index][0])            
+                index2 += 1 
+        #Setpoints -> valores int 
+        print("setpoint motors: {}".format(setpoints)) #Valores de los sliders 
+   
+        #Guarda los valores de los sliders del widget en la variable de la simulacion:
         for i in xrange(0,6):
-            joint_goal[i] = (self.arr_sl[i].value()*np.pi)/180
-        
-        self.goal.position1 = np.int16(((self.arr_sl[0].value()*np.pi)/180)*(32000/(2*np.pi)))
+            joint_goal[i] = (setpoints[i]*(np.pi))/180
+            print((self.arr_sl[i].value()*np.pi)/180)
+        #Mappea el valor para la simulacion: 
+        #90 - 180 y 90 - 1.57: 
+        #joint_goal[0] = ((setpoints_motor[0]*np.pi)/180)
+
+        ##### Arduino #####
+        self.goal.position1 = np.int16(((setpoint[0]*np.pi)/180)*(32000/(2*np.pi)))
         self.goal.position2 = np.int16(((self.arr_sl[1].value()*np.pi)/180)*(16400/(2*np.pi)))
         self.goal.position3 = np.int16(((self.arr_sl[2].value()*np.pi)/180)*(72000/(2*np.pi)))
         self.goal.position4 = np.int16(((self.arr_sl[3].value()*np.pi)/180)*(3200/(2*np.pi)))
@@ -353,13 +371,14 @@ class MyPlugin(Plugin):
 
         self.pub2.publish(self.goal)
 
+        #Mueve la simulacion: 
         group.go(joint_goal, wait=True)
         group.stop()
 
         current_joints = self.group.get_current_joint_values()
     
     #Regresa a 0 los valores de los sliders: 
-    def _Center_joints_teleoperation(self):
+    def _Center_joints_teleoperation(self, payload):
         group = self.group 
         joint_goal = group.get_current_joint_values()
 
@@ -378,6 +397,7 @@ class MyPlugin(Plugin):
 
         group.go(joint_goal, wait=True)
         group.stop()
+        
 
     def _Randomize_joints_teleoperation(self):
         result = []
