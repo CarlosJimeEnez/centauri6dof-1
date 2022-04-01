@@ -30,6 +30,7 @@ from random import randint
 import json
 import yaml
 import re 
+from functions import delete_first_position
 
 class MyPlugin(Plugin):
 
@@ -231,8 +232,8 @@ class MyPlugin(Plugin):
         self.activate = 0
 
         ### Nodos subscriptos: 
-        rospy.Subscriber('sliders_value', String, self._Send_joints_teleoperation)
-
+        rospy.Subscriber('/secuencia_mov', String, self.format_secuencias)
+        rospy.Subscriber('/sliders_value', String, self._Send_joints_teleoperation)
 
     ####### Methods #####S
     # Publica a el topic JOIN_STEPS los valores predefinidos en object_trajectories:
@@ -275,7 +276,7 @@ class MyPlugin(Plugin):
         for i in xrange(0,6):
             joint_goal[i] = (self.arr_sl[i].value()*np.pi)/180
 
-
+    
     #Representa el boton de de Path2, este no envia valores a el simulador:  
     def fcn_path_2(self):
         self._widget.ShowText.setText("Path two")
@@ -322,12 +323,12 @@ class MyPlugin(Plugin):
         #group.stop()
 
 
-    # Permite el movimiento del robot con los sliders presionando
+# -- Permite el movimiento del robot con los sliders presionando
     # el boton play
     def _Send_joints_teleoperation(self, payload):    
         group = self.group
         joint_goal = group.get_current_joint_values()
-        print("Llegada desde la pagina: {}".format(payload))        
+        print("Lleg desde la pagina: {}".format(payload))        
         #Salida: "[\"64\",\"50\",{\"setpoint\":0},{\"setpoint\":0},{\"setpoint\":0},{\"setpoint\":0}]"
 
         ### Funcion donde se convierte de JSON a string los valores de entrada:
@@ -350,7 +351,7 @@ class MyPlugin(Plugin):
             if index%2 == 0:
                 setpoints[index2] = int(setpoints_motor[index][0])            
                 index2 += 1 
-        #Setpoints -> valores int 
+        #setpoints -> valores int 
         print("setpoint motors: {}".format(setpoints)) #Valores de los sliders 
    
         #Guarda los valores de los sliders del widget en la variable de la simulacion:
@@ -362,21 +363,180 @@ class MyPlugin(Plugin):
         #joint_goal[0] = ((setpoints_motor[0]*np.pi)/180)
 
         ##### Arduino #####
-        self.goal.position1 = np.int16(((setpoint[0]*np.pi)/180)*(32000/(2*np.pi)))
+        self.goal.position1 = np.int16(((setpoints[0]*np.pi)/180)*(32000/(2*np.pi)))
         self.goal.position2 = np.int16(((self.arr_sl[1].value()*np.pi)/180)*(16400/(2*np.pi)))
         self.goal.position3 = np.int16(((self.arr_sl[2].value()*np.pi)/180)*(72000/(2*np.pi)))
         self.goal.position4 = np.int16(((self.arr_sl[3].value()*np.pi)/180)*(3200/(2*np.pi)))
         self.goal.position5 = np.int16(((self.arr_sl[4].value()*np.pi)/180)*(14400/(2*np.pi)))
         self.goal.position6 = np.int16(((self.arr_sl[5].value()*np.pi)/180)*(3000/(2*np.pi)))
-
+        #Manda los valores a el arduino
         self.pub2.publish(self.goal)
-
+    
         #Mueve la simulacion: 
         group.go(joint_goal, wait=True)
         group.stop()
 
         current_joints = self.group.get_current_joint_values()
+
+
+#---LLegada de datos de la secuencia de bloques:     
+    def format_secuencias(self, payload):
+        payload = str(payload)
+        print(payload)
+        payload = payload.split("}")
+        payload.pop() #--Elimina el ultimo elemento de la lista. 
+        
+        ## Cada objeto en la lista representa un bloque (grados, coordenadas, ...) 
+        bloques = []
+        for index ,content in enumerate(payload):
+            payload = content.split(",")
+            bloques.append(payload)
+        print("String formated: {}. lengh: {}".format(bloques, len(bloques)))        
     
+        ## Busqueda del tipo de bloques en la lista bloques: 
+        to_do_list = []
+        for index, content in enumerate(bloques): 
+
+            #Si la lista tiene un elemento vacio en la primera
+            #posicion lo elimina
+            if content[0] == "": 
+                content.pop(0)
+                print(content)
+
+            #Funcion para verificar el tipo de bloque:
+            vars = re.findall('[grado]', content[0])
+            print(vars)
+            leters = ['g', 'r', 'a', 'o']
+            for var in (vars): 
+                if len(leters) > 0: 
+                    for leter in leters:
+                        if(str(leter) == str(var)):  
+                            leters.remove(leter)
+                elif(len(leters) == 0): 
+                    leters = 'grados'
+                #else: 
+                    #Do the function again  
+            print(leters)
+
+
+
+
+
+            # print("Bloque grados: {}".format(content))
+            
+            # #Creacion de las variables:  
+            # payload = []
+            # grados = {
+            #     "tipo": "grado", 
+            #     "angulos": [], 
+            #     "velocidad": 0,
+            #     "delay": 0
+            # } 
+
+            # for content2 in (content): 
+            #     payload.append(re.findall('[0-9,-]+', content2))  
+            # payload.pop(0)
+            # print("Bloque grados paylaod: {}".format(payload))
+
+            # for index, content3 in enumerate(payload): 
+            #     if index == 6 : 
+            #         grados["velocidad"] = int(content3[0])
+            #     elif index == 7: 
+            #         grados["delay"] = int(content3[0])
+            #     else: 
+            #         grados["angulos"].append(int(content3[1]))
+            # to_do_list.append(grados)
+            # #print("GRADOS: {}".format(grados))
+
+            # #Bloque-Coord
+            # elif '{\\"tipo\\":\\"coordenada\\"' in content: 
+            #     #print("Bloque coordenada: {}".format(content))
+            #     #Creacion de las variables:  
+            #     payload = []
+            #     coordenada = {
+            #         "tipo": "coordenada", 
+            #         "paths": [], 
+            #         "velocidad": 0,
+            #         "delay": 0
+            #     } 
+
+            #     for content2 in (content): 
+            #         payload.append(re.findall('[0-9,-]+', content2))  
+            #     payload.pop(0)
+            #     payload.pop(0)
+            #     #print(payload)
+            #     for index, content3 in enumerate(payload): 
+            #         if index == 3 : 
+            #             coordenada["velocidad"] = int(content3[0])
+            #         elif index == 4: 
+            #             coordenada["delay"] = int(content3[0])
+            #         else: 
+            #             coordenada["paths"].append(int(content3[0]))
+            #     to_do_list.append(coordenada)
+            #     #print("Coordenadas: {}".format(coordenada))
+
+
+            # #Bloq - entrada
+            # elif '{\\"tipo\\":\\"entrada\\"' in content: 
+            #     #print("Bloque entrada: {}".format(content))
+            #     #Creacion de las variables:  
+            #     payload = []
+            #     entrada = {
+            #         "tipo": "entrada", 
+            #         "entrada_select": 0, 
+            #         "continuar_en": 0,
+            #         "valor_entrada": 0, 
+            #         "delay": 0
+            #     } 
+
+            #     for content2 in (content): 
+            #         payload.append(re.findall('[0-9,-]+', content2))  
+            #     payload.pop(0)
+            #     payload.pop(0)
+            #     for index, content3 in enumerate(payload): 
+            #         if index == 0 : 
+            #             entrada["entrada_select"] = int(content3[0])
+            #         elif index == 1: 
+            #             entrada["continuar_en"] = int(content3[0])
+            #         elif index == 2: 
+            #             entrada["valor_entrada"] = int(content3[0])
+            #         else: 
+            #             entrada["delay"] = int(content3[0])
+                        
+            #     to_do_list.append(entrada)
+
+            # #Bloq - salida: 
+            # elif '{\\"tipo\\":\\"salida\\"' in content: 
+            #     #print("Bloque salida: {}".format(content))
+            #     #Creacion de las variables:  
+            #     payload = [] #Es una variable temporal donde guardar los valores que llegan del bloque
+            #     salida = {
+            #         "tipo": "salida", 
+            #         "salidas": [],  
+            #         "delay": 0
+            #     } 
+
+            #     for content2 in (content): 
+            #         payload.append(re.findall('[0-9,-]+', content2))  
+            #     #print(payload)
+            #     payload.pop(0)
+            #     payload.pop(0)
+            #     #salida["delay"] = int(payload[5])
+
+            #     #reset payload: 
+            #     payload = []
+            #     for contenido in content: 
+            #         payload.append(re.findall('true', contenido))
+            #     #print("Payload redefinido: {}".format(payload))
+            #     to_do_list.append(salida)
+
+            # #Bloq - grip
+            # else: #print("Bloque grip: {}".format(content))
+            #     pass
+
+
+
+
     #Regresa a 0 los valores de los sliders: 
     def _Center_joints_teleoperation(self, payload):
         group = self.group 
@@ -579,8 +739,5 @@ class MyPlugin(Plugin):
         # TODO restore intrinsic configuration, usually using:
         # v = instance_settings.value(k)
         pass
-
-    ###Intento de hacer un nodo subscriptor que se comunica
-    # con el cliente ### 
-    def fun_prueba(self,payload): 
-        print("ola")
+    
+    
