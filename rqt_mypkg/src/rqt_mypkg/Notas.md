@@ -29,25 +29,23 @@ Donde cadad # es una posicion en la lista podemos hacer los siguiente:
 
 - Buscamos el tipo a el que pertenece cada nueva cadena creada con: 
  ```if (tipo) exist: do this; else: do that``` 
+ En esta funcion creamos una listas con unas letras clabes que las especificamos en re.findall() y buscamos
+ esas letras en un array que especificamos en leters
 ```python
-## Busqueda del tipo de bloques en la lista bloques: 
-for index, content in enumerate(bloques): 
-        #Bloque-grados
-        if 'data: "[{\\"tipo\\":\\"grado\\"' in content: 
-        print("Bloque grados: {}".format(content))
-        #Bloque-Coord
-        elif '{\\"tipo\\":\\"coordenada\\"' in content: 
-        print("Bloque coordenada: {}".format(content))
-        #Bloq - entrada
-        elif '{\\"tipo\\":\\"entrada\\"' in content: 
-        print("Bloque entrada: {}".format(content))
-        #Bloq - salida: 
-        elif '{\\"tipo\\":\\"salida\\"' in content: 
-        print("Bloque salida: {}".format(content))
-        #Bloq - grip
-        else: print("Bloque grip: {}".format(content))
-
+#Funcion para verificar el tipo de bloque:
+            vars = re.findall('[grado]', content[0])
+            print(vars)
+            leters = ['g', 'r', 'a', 'o']
+            for var in (vars): 
+                if len(leters) > 0 and leters != "grados": 
+                    for leter in leters:
+                        if(str(leter) == str(var)):  
+                            leters.remove(leter)
+                else: 
+                    leters = 'grados'  
+            print(leters)
 ```
+
 - Creamos un diccionario para cada tipo de bloque, donde rellenamos los campos del nombre y el payload.
 Estructura del dicc: "tipo": "", and "payload": "" 
 ```python 

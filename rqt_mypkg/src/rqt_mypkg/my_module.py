@@ -30,7 +30,7 @@ from random import randint
 import json
 import yaml
 import re 
-from functions import delete_first_position
+from functions import find_block
 
 class MyPlugin(Plugin):
 
@@ -382,16 +382,15 @@ class MyPlugin(Plugin):
 #---LLegada de datos de la secuencia de bloques:     
     def format_secuencias(self, payload):
         payload = str(payload)
-        print(payload)
         payload = payload.split("}")
         payload.pop() #--Elimina el ultimo elemento de la lista. 
-        
+        print(payload)
+
         ## Cada objeto en la lista representa un bloque (grados, coordenadas, ...) 
         bloques = []
         for index ,content in enumerate(payload):
             payload = content.split(",")
             bloques.append(payload)
-        print("String formated: {}. lengh: {}".format(bloques, len(bloques)))        
     
         ## Busqueda del tipo de bloques en la lista bloques: 
         to_do_list = []
@@ -401,141 +400,161 @@ class MyPlugin(Plugin):
             #posicion lo elimina
             if content[0] == "": 
                 content.pop(0)
-                print(content)
 
-            #Funcion para verificar el tipo de bloque:
-            vars = re.findall('[grado]', content[0])
-            print(vars)
-            leters = ['g', 'r', 'a', 'o']
-            for var in (vars): 
-                if len(leters) > 0: 
-                    for leter in leters:
-                        if(str(leter) == str(var)):  
-                            leters.remove(leter)
-                elif(len(leters) == 0): 
-                    leters = 'grados'
-                #else: 
-                    #Do the function again  
-            print(leters)
+            #Encuentra el tipo de bloque que llega desde la pagina: x
+            bloque = find_block(content[0])
+
+    #---        #Bloque Grado: 
+            if (bloque == 'grado'): 
+                ##Creacion de las variables:  
+                payload = []
+                grados = {
+                    "tipo": "grado", 
+                    "angulos": [], 
+                    "velocidad": 0,
+                    "delay": 0
+                } 
+
+                for content2 in (content): 
+                    payload.append(re.findall('[0-9,-]+', content2))  
+                
+                #Borrar el primer elemento si es nulo
+                while len(payload[0]) < 1 :
+                    payload.pop(0)
+
+                for index, content3 in enumerate(payload): 
+                    if index == 6 : 
+                        grados["velocidad"] = int(content3[0])
+                    elif index == 7: 
+                        grados["delay"] = int(content3[0])
+                    else: 
+                        grados["angulos"].append(int(content3[1]))
+                to_do_list.append(grados)
+
+    #--        ##Bloque-Coord
+            elif (bloque == 'coord'): 
+                #print("Bloque coordenada: {}".format(content))
+                #Creacion de las variables:  
+                payload = []
+                coordenada = {
+                    "tipo": "coordenada", 
+                    "paths": [], 
+                    "velocidad": 0,
+                    "delay": 0
+                } 
+
+                for content2 in (content): 
+                    payload.append(re.findall('[0-9,-]+', content2))  
+                
+                #Borrar el primer elemento si es nulo
+                while len(payload[0]) < 1 :
+                    payload.pop(0)
+
+                for index, content3 in enumerate(payload): 
+                    if index == 3 : 
+                        coordenada["velocidad"] = int(content3[0])
+                    elif index == 4: 
+                        coordenada["delay"] = int(content3[0])
+                    else: 
+                        coordenada["paths"].append(int(content3[0]))
+                to_do_list.append(coordenada)
+
+    #---        ##Bloq - entrada
+            elif  (bloque == 'entrada'): 
+                #print("Bloque entrada: {}".format(content))
+                #Creacion de las variables:  
+                payload = []
+                entrada = {
+                    "tipo": "entrada", 
+                    "entrada_select": 0, 
+                    "continuar_en": 0,
+                    "valor_entrada": 0, 
+                    "delay": 0
+                } 
+
+                for content2 in (content): 
+                    payload.append(re.findall('[0-9,-]+', content2))  
+                
+                #Borrar el primer elemento si es nulo
+                while len(payload[0]) < 1 :
+                    payload.pop(0)
 
 
+                for index, content3 in enumerate(payload): 
+                    if index == 0 : 
+                        entrada["entrada_select"] = int(content3[0])
+                    elif index == 1: 
+                        entrada["continuar_en"] = int(content3[0])
+                    elif index == 2: 
+                        entrada["valor_entrada"] = int(content3[0])
+                    else: 
+                        entrada["delay"] = int(content3[0])
 
+                to_do_list.append(entrada)
 
+    #---    # #Bloq - salida: 
+            elif (bloque == "salida"): 
+                #Creacion de las variables:  
+                payload = [] #Es una variable temporal donde guardar los valores que llegan del bloque
+                salida = {
+                    "tipo": "salida", 
+                    "salidas": [0,0,0,0,0],  
+                    "delay": 0
+                } 
 
-            # print("Bloque grados: {}".format(content))
+                for content2 in (content): 
+                    payload.append(re.findall('[0-9,-]+', content2))  
+                
+                #Borrar el primer elemento si es nulo
+                while len(payload[0]) < 1 :
+                    payload.pop(0)                
             
-            # #Creacion de las variables:  
-            # payload = []
-            # grados = {
-            #     "tipo": "grado", 
-            #     "angulos": [], 
-            #     "velocidad": 0,
-            #     "delay": 0
-            # } 
 
-            # for content2 in (content): 
-            #     payload.append(re.findall('[0-9,-]+', content2))  
-            # payload.pop(0)
-            # print("Bloque grados paylaod: {}".format(payload))
+                for index, contenido in enumerate(payload): 
+                    if index == 5: 
+                        salida["delay"] = int(contenido[0])
+                    elif len(contenido) == 2:
+                        salida["salidas"][index] = int(contenido[1])
+                
+                #reset payload: 
+                payload = []
+                for contenido in content: 
+                    payload.append(re.findall('true', contenido))
+                payload.pop(0)                
 
-            # for index, content3 in enumerate(payload): 
-            #     if index == 6 : 
-            #         grados["velocidad"] = int(content3[0])
-            #     elif index == 7: 
-            #         grados["delay"] = int(content3[0])
-            #     else: 
-            #         grados["angulos"].append(int(content3[1]))
-            # to_do_list.append(grados)
-            # #print("GRADOS: {}".format(grados))
+                for index, contenido in enumerate(payload): 
+                    if len(contenido) > 0: 
+                        salida["salidas"][index] = contenido[0] 
+                        print("salida:{}".format(salida["salidas"]))
 
-            # #Bloque-Coord
-            # elif '{\\"tipo\\":\\"coordenada\\"' in content: 
-            #     #print("Bloque coordenada: {}".format(content))
-            #     #Creacion de las variables:  
-            #     payload = []
-            #     coordenada = {
-            #         "tipo": "coordenada", 
-            #         "paths": [], 
-            #         "velocidad": 0,
-            #         "delay": 0
-            #     } 
+                to_do_list.append(salida)
 
-            #     for content2 in (content): 
-            #         payload.append(re.findall('[0-9,-]+', content2))  
-            #     payload.pop(0)
-            #     payload.pop(0)
-            #     #print(payload)
-            #     for index, content3 in enumerate(payload): 
-            #         if index == 3 : 
-            #             coordenada["velocidad"] = int(content3[0])
-            #         elif index == 4: 
-            #             coordenada["delay"] = int(content3[0])
-            #         else: 
-            #             coordenada["paths"].append(int(content3[0]))
-            #     to_do_list.append(coordenada)
-            #     #print("Coordenadas: {}".format(coordenada))
+    # --    # #Bloq - grip
+            elif(bloque == "grip"):
+                #Creacion de las variables:  
+                payload = [] #Es una variable temporal donde guardar los valores que llegan del bloque
+                gripper = {
+                    "tipo": "gripper", 
+                    "apertura": 0,  
+                    "delay": 0
+                } 
 
+                for content2 in (content): 
+                    payload.append(re.findall('[0-9,-]+', content2))  
 
-            # #Bloq - entrada
-            # elif '{\\"tipo\\":\\"entrada\\"' in content: 
-            #     #print("Bloque entrada: {}".format(content))
-            #     #Creacion de las variables:  
-            #     payload = []
-            #     entrada = {
-            #         "tipo": "entrada", 
-            #         "entrada_select": 0, 
-            #         "continuar_en": 0,
-            #         "valor_entrada": 0, 
-            #         "delay": 0
-            #     } 
-
-            #     for content2 in (content): 
-            #         payload.append(re.findall('[0-9,-]+', content2))  
-            #     payload.pop(0)
-            #     payload.pop(0)
-            #     for index, content3 in enumerate(payload): 
-            #         if index == 0 : 
-            #             entrada["entrada_select"] = int(content3[0])
-            #         elif index == 1: 
-            #             entrada["continuar_en"] = int(content3[0])
-            #         elif index == 2: 
-            #             entrada["valor_entrada"] = int(content3[0])
-            #         else: 
-            #             entrada["delay"] = int(content3[0])
-                        
-            #     to_do_list.append(entrada)
-
-            # #Bloq - salida: 
-            # elif '{\\"tipo\\":\\"salida\\"' in content: 
-            #     #print("Bloque salida: {}".format(content))
-            #     #Creacion de las variables:  
-            #     payload = [] #Es una variable temporal donde guardar los valores que llegan del bloque
-            #     salida = {
-            #         "tipo": "salida", 
-            #         "salidas": [],  
-            #         "delay": 0
-            #     } 
-
-            #     for content2 in (content): 
-            #         payload.append(re.findall('[0-9,-]+', content2))  
-            #     #print(payload)
-            #     payload.pop(0)
-            #     payload.pop(0)
-            #     #salida["delay"] = int(payload[5])
-
-            #     #reset payload: 
-            #     payload = []
-            #     for contenido in content: 
-            #         payload.append(re.findall('true', contenido))
-            #     #print("Payload redefinido: {}".format(payload))
-            #     to_do_list.append(salida)
-
-            # #Bloq - grip
-            # else: #print("Bloque grip: {}".format(content))
-            #     pass
-
-
-
+                while(len(payload[0]) < 1):                 
+                    payload.pop(0)
+                
+                for index, contenido in enumerate(payload): 
+                    if (index == 0): 
+                        gripper["apertura"] = int(contenido[0])
+                    else: 
+                        gripper["delay"] = int(contenido[0])
+                
+                to_do_list.append(gripper)
+        
+        print("ToDo List:{}".format(to_do_list))
+            
 
     #Regresa a 0 los valores de los sliders: 
     def _Center_joints_teleoperation(self, payload):
