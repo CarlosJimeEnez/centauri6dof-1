@@ -1,5 +1,4 @@
 import imp
-import json
 import os
 from posixpath import split
 import string
@@ -28,9 +27,10 @@ from moveit_commander.conversions import pose_to_list
 from random import randint
 
 import json
-import yaml
 import re 
-from functions import find_block
+import pickle
+import ast
+from functions import delete_empty_position, find_block, find_name, save_file, save_blocks_in_list, cargar_archivo, borrar_posicion_vacia
 
 class MyPlugin(Plugin):
 
@@ -232,8 +232,16 @@ class MyPlugin(Plugin):
         self.activate = 0
 
         ### Nodos subscriptos: 
+        
         rospy.Subscriber('/secuencia_mov', String, self.format_secuencias)
+        #Llegada de datos desde la pagina de control, se usa para mover los motores segun el valor de los sliders: 
         rospy.Subscriber('/sliders_value', String, self._Send_joints_teleoperation)
+        #Guarda en un archivo json la secuencia de movimentos: 
+        rospy.Subscriber('/guardar_archivo', String, self.guardar_archivo)
+        #Ejecuta el programa que llega desde la pagina de ejecutar: 
+        rospy.Subscriber('/ejecutar_archivo', String, self.ejecutar_archivo)
+        rospy.Subscriber('/salidas_digitales', String, self.comprobar_salidas)
+        
 
     ####### Methods #####S
     # Publica a el topic JOIN_STEPS los valores predefinidos en object_trajectories:
@@ -391,20 +399,41 @@ class MyPlugin(Plugin):
         for index ,content in enumerate(payload):
             payload = content.split(",")
             bloques.append(payload)
-    
+
+        #Busca el tipo de bloques y lo guarda en una lista:         
+        to_do_list = save_blocks_in_list(bloques)
+        print("ToDo List:{}".format(to_do_list))
+
+            
+    def guardar_archivo(self, payload): 
+        print("Llegada desde la pagina{}".format(payload))
+        payload = str(payload)
+        payload = payload.split("}")
+        payload.pop() #--Elimina el ultimo elemento de la lista. 
+        
+
+        ## Cada objeto en la lista representa un bloque (grados, coordenadas, ...) 
+        bloques = []
+        for index ,content in enumerate(payload):
+            payload = content.split(",")
+            bloques.append(payload)
+
+        #Busqueda del nombre: 
+        nombre_archivo = find_name(bloques[0][0])
+        print("Nombre: {}".format(nombre_archivo))
+
+        #ELiminamos la primera pos del primer bloque para 
+        # eliminar el dato del nombre y quedarnos solo con el
+        # cont: 
+        bloques[0].pop(0)
+        
         ## Busqueda del tipo de bloques en la lista bloques: 
         to_do_list = []
-        for index, content in enumerate(bloques): 
-
-            #Si la lista tiene un elemento vacio en la primera
-            #posicion lo elimina
-            if content[0] == "": 
-                content.pop(0)
-
-            #Encuentra el tipo de bloque que llega desde la pagina: x
+        for index, content in enumerate(bloques):                 
+            delete_empty_position(content[0], content)
             bloque = find_block(content[0])
 
-    #---        #Bloque Grado: 
+    #---    #Bloque Grado: 
             if (bloque == 'grado'): 
                 ##Creacion de las variables:  
                 payload = []
@@ -525,7 +554,6 @@ class MyPlugin(Plugin):
                 for index, contenido in enumerate(payload): 
                     if len(contenido) > 0: 
                         salida["salidas"][index] = contenido[0] 
-                        print("salida:{}".format(salida["salidas"]))
 
                 to_do_list.append(salida)
 
@@ -552,9 +580,9 @@ class MyPlugin(Plugin):
                         gripper["delay"] = int(contenido[0])
                 
                 to_do_list.append(gripper)
-        
-        print("ToDo List:{}".format(to_do_list))
-            
+
+        # -- Guardar el archivo:   
+        save_file(nombre_archivo, to_do_list)
 
     #Regresa a 0 los valores de los sliders: 
     def _Center_joints_teleoperation(self, payload):
@@ -744,19 +772,185 @@ class MyPlugin(Plugin):
 
         group.go(joint_goal, wait=True)
         group.stop()
+    
+    def ejecutar_archivo(self, archivo): 
+        '''Ejecuta las ordenes de un archivo cargado desde la pag: '''
+        print("LLegada del archivo: {}".format(archivo))
+        archivo = str(archivo)
+        archivo = archivo.split('"')
+        #En archivo tenemos el lugar en donde se encuentra el documento a buscar:
+        archivo = archivo[2].replace("\\", "")
+
+        archivo_cargado = cargar_archivo(archivo)
+        #Eliminamos una "u" que no se de donde aparecen :c: 
+        archivo_cargado = archivo_cargado.replace("u", "")
+
+        #Eliminamos las "[]" del inicio y fin para crear un diccionario: 
+        archivo_cargado = archivo_cargado.replace(archivo_cargado[0], "")
+        archivo_cargado = archivo_cargado.replace(archivo_cargado[-1], "")
         
-    def shutdown_plugin(self):
-        # TODO unregister all publishers here
-        pass
+        archivo_cargado = archivo_cargado.split("}")
+        archivo_cargado.pop() #--Elimina el ultimo elemento de la lista porque viene vacio. 
 
-    def save_settings(self, plugin_settings, instance_settings):
-        # TODO save intrinsic configuration, usually using:
-        # instance_settings.set_value(k, v)
-        pass
+        ## Cada objeto en la lista representa un bloque (grados, coordenadas, ...) 
+        to_do_list = []
+        bloques = []
+        for index ,content in enumerate(archivo_cargado):
+            archivo_cargado = content.split(",")
+            bloques.append(archivo_cargado)
+        print("Bloques: {}".format(bloques))
+        
+        for bloque in bloques: 
+            for index, content in enumerate(bloque): 
+                #Borramos los espacios en blanco: 
+                if len(content) < 1: 
+                    bloque.pop(index)
+                #COORDENADA: 
+                if content ==  " 'tipo': 'coordenada'": 
+                    #Para acceder a cada bloque usamos la variable bloque: 
+                    # luego creamos un diccionario que se guardara en una lista: 
+                    
+                    ##Creacion de las variables:  
+                    payload = []
+                    coordenada = {
+                        "tipo": "coordenada", 
+                        "paths": [], 
+                        "velocidad": 0,
+                        "delay": 0
+                    } 
+                    for content in bloque: 
+                        payload.append(re.findall('[0-9,-]+', content))  
+                    
+                    #Eliminamos los espacios en blanco:
+                    payload = borrar_posicion_vacia(payload)
+                    
+                    for index, valores in enumerate(payload): 
+                        if index == 0 : 
+                            coordenada["delay"] = int(valores[0]) 
+                        elif index == 4: 
+                            coordenada["velocidad"] = int(valores[0])
+                        else: 
+                            coordenada["paths"].append(int(valores[0]))
+                    to_do_list.append(coordenada)
+                
+                ## GRADOS:     
+                elif content == " 'tipo': 'grado'": 
+                    #Para acceder a cada bloque usamos la variable bloque: 
+                    # luego creamos un diccionario que se guardara en una lista: 
+                    
+                    ##Creacion de las variables:  
+                    payload = []
+                    grados = {
+                        "tipo": "grado", 
+                        "angulos": [], 
+                        "velocidad": 0, 
+                        "delay": 0,
+                    } 
 
-    def restore_settings(self, plugin_settings, instance_settings):
-        # TODO restore intrinsic configuration, usually using:
-        # v = instance_settings.value(k)
-        pass
+                    for content in bloque: 
+                        payload.append(re.findall('[0-9,-]+', content))  
+                    #Eliminamos los espacios en blanco: 
+                    payload = borrar_posicion_vacia(payload)
+
+                    for index, valores in enumerate(payload): 
+                        if index == 0 : 
+                            grados["delay"] = int(valores[0]) 
+                        elif index == 7: 
+                            grados["velocidad"] = int(valores[0])
+                        else: 
+                            grados["angulos"].append(int(valores[0]))
+                    to_do_list.append(grados)
+                
+                ## ENTRADA: 
+                elif content == " 'tipo': 'entrada'": 
+                    #Para acceder a cada bloque usamos la variable bloque: 
+                    # luego creamos un diccionario que se guardara en una lista: 
+                    
+                    ##Creacion de las variables:  
+                    payload = []
+                    entrada = {
+                        "tipo": "entrada", 
+                        "valor_entrada": [], 
+                        "entrada_selec": 0, 
+                        "continuar_en": 0,
+                        "delay": 0 
+                    } 
+
+                    for content in bloque: 
+                        payload.append(re.findall('[0-9,-]+', content))  
+                    #Eliminamos los espacios en blanco: 
+                    payload = borrar_posicion_vacia(payload)
+
+                    for index, valores in enumerate(payload): 
+                        if index == 0 : 
+                            entrada["delay"] = int(valores[0]) 
+                        elif index == 1: 
+                            entrada["entrada_selec"] = int(valores[0])
+                        elif index == 2: 
+                            entrada["continuar_en"] = int(valores[0])
+                        else: 
+                            entrada["valor_entrada"] = int(valores[0])
+                    to_do_list.append(entrada)
+
+                ## SALIDA: 
+                elif content == " 'tipo': 'salida'": 
+                    ##Creacion de las variables:  
+                    payload = []
+                    salida = {
+                        "tipo": "salida", 
+                        "salidas": [],
+                        "delay": 0 
+                    } 
+
+                    for content in bloque: 
+                        payload.append(re.findall('[0-9,-]+', content))  
+                    for index, valores in enumerate(payload): 
+                        if index == 0: 
+                            salida["delay"] == int(valores[0]) 
+                        elif index == 6: 
+                            pass
+                        else: 
+                            if len(valores) > 0:  
+                                salida["salidas"].append(int(valores[0]))
+                            else: 
+                                salida["salidas"].append(int(1))                    
+                    to_do_list.append(salida)
+                
+                ##GRIPPER: 
+                elif content == " 'tipo': 'gripper'": 
+                    ##Creacion de las variables:  
+                    payload = []
+                    gripper = {
+                        "tipo": "gripper", 
+                        "apertura": 0,
+                        "delay": 0 
+                    }                
+
+                    for content in bloque: 
+                        payload.append(re.findall('[0-9,-]+', content))  
+                    #Eliminamos los espacios en blanco: 
+                    payload = borrar_posicion_vacia(payload)
+
+                    for index, valor in enumerate(payload): 
+                        if index == 0: 
+                            gripper["delay"] = int(valor[0]) 
+                        else: 
+                            gripper["apertura"] = int(valor[0])
+                    
+                    to_do_list.append(gripper)
+
+        print("Bloques {}".format(to_do_list))
+          
+        publicador = rospy.Publisher('toggle_led', String, queue_size=20)
+        rate = rospy.Rate(20) 
+        publicador.publish("Hello")
+
+    def comprobar_salidas(self, salidas): 
+        print("Salidas {}".format(salidas))
+
+                
+            
+
     
-    
+        
+
