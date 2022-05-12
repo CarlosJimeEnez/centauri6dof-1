@@ -49,6 +49,15 @@ What things you need to install the software and how to install them
    ```
    rosrun rqt_mypkg rqt_mypkg
    ```
+10. Para correr la pagina web, navegue hasta la pagina RsNuxt y use el comando usa el comando: 
+   ```
+   npm run dev
+   ```
+11. Para iniciar la comunicacion entre la pagina web y ROS utilice el comando: 
+   ```
+   roslaunch rosbridge_server rosbridge_websocket.launch
+   ```
+   
 ## Graphical user interface
 ![gui.png](/GUI.png)
 ### Graphical user interface commands
