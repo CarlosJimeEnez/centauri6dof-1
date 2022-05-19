@@ -57,6 +57,10 @@ What things you need to install the software and how to install them
    ```
    roslaunch rosbridge_server rosbridge_websocket.launch
    ```
+12. Para iniciar la comunicacion entre el Arduino y el main.py: 
+   ```
+   rosrun rosserial_python serial_node.py /dev/ttyUSB0
+   ```
    
 ## Graphical user interface
 ![gui.png](/GUI.png)
